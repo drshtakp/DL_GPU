@@ -1,0 +1,5 @@
+# My commands
+alias vi='vim'
+alias rm='rm -i'
+alias R='R --no-save -q'
+alias ls='ls -1 --color=tty'

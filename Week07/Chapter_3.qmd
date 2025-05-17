@@ -1,0 +1,439 @@
+---
+title: "Ch3. Convolutional neural networks"
+format:
+  html:
+    code-fold: true
+jupyter: python3
+---
+
+# This chapter covers
+
+-   How tensors represent spatial data
+-   Defining convolutions and their uses
+-   Building and training a convolutional neural network (CNN)
+-   Adding pooling to make CNNs more robust
+-   Augmenting image data to improve accuracy
+
+The success of convolutions comes from their ability to learn spatial patterns, which has made them the default method to use for any data resembling an image.
+
+-   First, we discuss how images are represented to a neural network.
+    -   That images are 2D is an important structure or meaning we will encode into the specific way we organize data in our tensors.
+    -   You should always care about the structure of your data because picking the right architecture to match the structure is the best way to improve the accuracy of your model.
+-   Next, we remove the mystery of what a convolution is, show how convolutions can detect simple patterns, and explain why they're a good approach for data structured like an image.
+-   Then, we'll create a convolutional layer, which can act as a replacement for the `nn.Linear` layer we used in the previous chapter.
+-   Finally, we build some CNNs and discuss a few additional tricks to improve their accuracy.
+
+## R-Python Toolkits if Run in RStudio
+
+## R-Python Toolkits if Run in RStudio
+
+-   `library(reticulate)`
+-   Gilbreth `use_python("/depot/gdsp/apps/MLPy/bin/python3")`
+-   Local (example only) `use_python("/Users/wen-wen/opt/miniconda3/envs/dl/bin/python3")`
+-   `py_config()`
+-   `repl_python()`
+
+## Jupyter Kernel to Use if Run in Jupyter Notebook
+
+-   Gilbreth: `MLPy-py3.8.5` or `learning/conda-2020.11-py38-gpu`
+
+## 3.1 Spatial structural prior beliefs
+
+[Figure 3.1](https://learning.oreilly.com/library/view/inside-deep-learning/9781617298639/OEBPS/Text/03.html#:-:text=Figure%203.1%20Columnar,images%20instead%20of%20audio.) shows some of the cases where you want to use a CNN.
+
+[Figure 3.2](https://learning.oreilly.com/library/view/inside-deep-learning/9781617298639/OEBPS/Text/03.html#:-:text=Figure%203.2%20Shuffling,good%20fit%20for%20images.) Images are structured. There is an order to the pixels. If you shuffled the pixels around, you would fundamentally change the meaning of a picture.
+
+Suppose we have N images, and each has a height H and a width W. As a starting point, we might consider a matrix of image data to have the shape, `(N,W,H)`, a three-dimensional tensor. Color, in addition, is represented with channels C `(N,C,W,H)`, a four-dimensional tensor. [Convolutions use this approach so that when a convolution looks at pixel location i, j in an image, it can also consider the neighboring pixel locations.](https://learning.oreilly.com/library/view/inside-deep-learning/9781617298639/OEBPS/Text/03.html#:-:text=Convolutions%20use%20this,neighboring%20pixel%20locations.)
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:51.292652Z', start_time: '2021-03-22T14:56:50.045676Z'}
+#| tags: [remove_cell]
+
+# use os.system  to execute the python script provided by author
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from torch.utils.data import Dataset, DataLoader
+
+from tqdm.autonotebook import tqdm
+
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import imshow
+
+import pandas as pd
+
+from sklearn.metrics import accuracy_score
+
+import time
+
+import os
+os.system(f'python idlmam.py')
+from idlmam import train_simple_network, set_seed
+
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:51.300000Z', start_time: '2021-03-22T14:56:51.294314Z'}
+#| tags: [remove_cell]
+%matplotlib inline
+from matplotlib_inline.backend_inline import set_matplotlib_formats
+set_matplotlib_formats('png', 'pdf')
+
+def set_seed(seed):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+torch.backends.cudnn.deterministic=True
+set_seed(1)
+```
+
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:51.351972Z', start_time: '2021-03-22T14:56:51.309417Z'}
+import torchvision 
+from torchvision import transforms
+```
+
+
+[Now we can load the MNIST dataset using the following code](https://learning.oreilly.com/library/view/inside-deep-learning/9781617298639/OEBPS/Text/03.html#:-:text=Now%20we%20can%20load%20the%20MNIST%20dataset%20using%20the%20following%20code.)
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:51.379280Z', start_time: '2021-03-22T14:56:51.354271Z'}
+mnist_data_train = torchvision.datasets.MNIST("./data", train=True, download=True)
+mnist_data_test = torchvision.datasets.MNIST("./data", train=False, download=True)
+x_example, y_example = mnist_data_train[0]
+type(x_example)
+```
+
+[Transform image data to tensor:](https://learning.oreilly.com/library/view/inside-deep-learning/9781617298639/OEBPS/Text/03.html#:-:text=We%20need%20to%20use,transforms%20package%20from%20torchvision.)
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:51.408830Z', start_time: '2021-03-22T14:56:51.380844Z'}
+mnist_data_train = torchvision.datasets.MNIST("./data", train=True, download=True, transform=transforms.ToTensor())
+mnist_data_test = torchvision.datasets.MNIST("./data", train=False, download=True, transform=transforms.ToTensor())
+x_example, y_example = mnist_data_train[0]
+print(x_example.shape)
+print(y_example)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:51.595917Z', start_time: '2021-03-22T14:56:51.409942Z'}
+#| max_h: 0.3
+imshow(x_example[0,:], cmap='gray')
+plt.show()
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:51.601538Z', start_time: '2021-03-22T14:56:51.597195Z'}
+x_as_color = torch.stack([x_example[0,:], x_example[0,:], x_example[0,:]], dim=0)
+print(x_as_color.shape)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:51.764490Z', start_time: '2021-03-22T14:56:51.602584Z'}
+#| max_h: 0.3
+imshow(x_as_color.permute(1,2,0))
+plt.show()
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:51.929352Z', start_time: '2021-03-22T14:56:51.765727Z'}
+#| max_h: 0.3
+x_as_color = torch.stack([x_example[0,:], x_example[0,:], x_example[0,:]])
+x_as_color[0,:] = 0 #No Red
+#Leaving green alone
+x_as_color[2,:] = 0 #No Blue
+imshow(x_as_color.permute(1,2,0))
+plt.show()
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:52.092769Z', start_time: '2021-03-22T14:56:51.930590Z'}
+#| max_h: 0.3
+#grab 3 images
+x1, x2, x3 = mnist_data_train[0], mnist_data_train[1], mnist_data_train[2]
+#drop the labels
+x1, x2, x3 = x1[0], x2[0], x3[0]
+x_as_color = torch.stack([x1[0,:], x2[0,:], x3[0,:]], dim=0)
+imshow(x_as_color.permute(1,2,0))
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:52.258941Z', start_time: '2021-03-22T14:56:52.094057Z'}
+#| max_h: 0.3
+rand_order = torch.randperm(x_example.shape[1] * x_example.shape[2])
+x_shuffled = x_example.view(-1)[rand_order].view(x_example.shape)
+imshow(x_shuffled[0,:], cmap='gray')
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:52.486229Z', start_time: '2021-03-22T14:56:52.260269Z'}
+#| max_h: 0.3
+from scipy.signal import convolve
+img_indx = 58
+img = mnist_data_train[img_indx][0][0,:]
+plt.imshow(img, vmin=0, vmax=1, cmap='gray')
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:52.653303Z', start_time: '2021-03-22T14:56:52.487509Z'}
+#| max_h: 0.3
+blur_filter = np.asarray([[1,1,1],
+                          [1,1,1],
+                          [1,1,1]
+                         ])/9.0
+
+blurry_img = convolve(img, blur_filter)
+plt.imshow(blurry_img, vmin=0, vmax=1, cmap='gray')
+plt.show()
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:52.819553Z', start_time: '2021-03-22T14:56:52.654427Z'}
+#| max_h: 0.3
+#We can find edges by focusing on the difference between a pixel, and its neighbors
+edge_filter = np.asarray([[-1,-1,-1],
+                          [-1, 8,-1],
+                          [-1,-1,-1]
+                         ])
+
+
+edge_img = convolve(img, edge_filter)
+plt.imshow(edge_img, vmin=0, vmax=1, cmap='gray')
+plt.show()
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:52.986823Z', start_time: '2021-03-22T14:56:52.822341Z'}
+#| max_h: 0.3
+#We could look for only horizontal edges
+h_edge_filter = np.asarray([[-1,-1,-1],
+                          [0, 0,0],
+                          [1, 1, 1]
+                         ])
+
+
+h_edge_img = convolve(img, h_edge_filter)
+plt.imshow(h_edge_img, vmin=0, vmax=1, cmap='gray')
+plt.show()
+```
+
+
+## 3.4.4 PyTorch code for first CNN
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:53.024397Z', start_time: '2021-03-22T14:56:52.988368Z'}
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+B = 32
+mnist_train_loader = DataLoader(mnist_data_train, batch_size=B, shuffle=True)
+mnist_test_loader = DataLoader(mnist_data_test, batch_size=B)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T14:56:53.032073Z', start_time: '2021-03-22T14:56:53.025573Z'}
+#How many values are in the input? We use this to help determine the size of subsequent layers
+D = 28*28 #28 * 28 images 
+#How many channels are in the input?
+C = 1
+#How many classes are there?
+classes = 10
+#How many filters should we use
+filters = 16
+#how large should our filters be?
+K = 3
+#for comparison, lets define a linear model of similar complexity
+model_linear = nn.Sequential(
+  nn.Flatten(), #(B, C, W, H) -> (B, C*W*H) = (B,D)
+  nn.Linear(D, 256), 
+  nn.Tanh(),
+  nn.Linear(256, classes),
+)
+
+#A simple convolutional network:
+model_cnn = nn.Sequential(
+  #Conv2d follows the pattern of:
+  #Conv2d(# of input channels, #filters/output-channels, #filter-size)
+  nn.Conv2d(C, filters, K, padding=K//2), #$x \circledast G$
+  nn.Tanh(),#Activation functions work on any size tensor
+  nn.Flatten(), #Convert from (B, C, W, H) ->(B, D). This way we can use a Linear layer after
+  nn.Linear(filters*D, classes),
+)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T15:02:46.846007Z', start_time: '2021-03-22T14:56:53.033558Z'}
+#| tags: [remove_output]
+loss_func = nn.CrossEntropyLoss()
+cnn_results = train_simple_network(model_cnn, loss_func, mnist_train_loader, test_loader=mnist_test_loader, score_funcs={'Accuracy': accuracy_score}, device=device, epochs=20)
+fc_results = train_simple_network(model_linear, loss_func, mnist_train_loader, test_loader=mnist_test_loader, score_funcs={'Accuracy': accuracy_score}, device=device, epochs=20)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T15:02:47.104806Z', start_time: '2021-03-22T15:02:46.847188Z'}
+sns.lineplot(x='epoch', y='test Accuracy', data=cnn_results, label='CNN')
+sns.lineplot(x='epoch', y='test Accuracy', data=fc_results, label='Fully Conected')
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T15:02:47.425221Z', start_time: '2021-03-22T15:02:47.110382Z'}
+#| max_h: 0.4
+img_indx = 0
+img, correct_class = mnist_data_train[img_indx]
+img = img[0,:]
+#move to the lower right, then upper left
+img_lr = np.roll(np.roll(img, 1, axis=1), 1, axis=0)
+img_ul = np.roll(np.roll(img, -1, axis=1), -1, axis=0)
+#plot the images
+f, axarr = plt.subplots(1,3)
+axarr[0].imshow(img, cmap='gray')
+axarr[1].imshow(img_lr, cmap='gray')
+axarr[2].imshow(img_ul, cmap='gray')
+plt.show()
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T15:02:47.430933Z', start_time: '2021-03-22T15:02:47.426453Z'}
+#eval mode since we are not training
+model = model_cnn.cpu().eval()
+
+def pred(model, img):
+    with torch.no_grad():#Always turn off gradients when evaluating
+        w, h = img.shape#Whats the width/height of the image
+        if not isinstance(img, torch.Tensor):
+            img = torch.tensor(img)
+        x = img.reshape(1,-1,w,h)#reshape it as (B, C, W, H)
+        logits = model(x) #Get the logits
+        y_hat = F.softmax(logits, dim=1)#Turn into probabilities 
+        return y_hat.numpy().flatten()#convert prediction to numpy array. 
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T15:02:47.449121Z', start_time: '2021-03-22T15:02:47.432158Z'}
+img_pred = pred(model, img)
+img_lr_pred = pred(model, img_lr)
+img_ul_pred = pred(model, img_ul)
+
+print("Org Img Class {} Prob:         ".format(correct_class) , img_pred[correct_class])
+print("Lower Right Img Class {} Prob: ".format(correct_class) , img_lr_pred[correct_class])
+print("Uper Left Img Class {} Prob:   ".format(correct_class) , img_ul_pred[correct_class])
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T15:09:01.336880Z', start_time: '2021-03-22T15:02:47.468427Z'}
+#| tags: [remove_output]
+model_cnn_pool = nn.Sequential(
+  nn.Conv2d(C, filters, 3, padding=3//2), 
+  nn.Tanh(),
+  nn.Conv2d(filters, filters, 3, padding=3//2), 
+  nn.Tanh(),
+  nn.Conv2d(filters, filters, 3, padding=3//2), 
+  nn.Tanh(),
+  nn.MaxPool2d(2),
+  nn.Conv2d(filters, 2*filters, 3, padding=3//2), 
+  nn.Tanh(),
+  nn.Conv2d(2*filters, 2*filters, 3, padding=3//2), 
+  nn.Tanh(),
+  nn.Conv2d(2*filters, 2*filters, 3, padding=3//2), 
+  nn.Tanh(),
+  nn.MaxPool2d(2),
+
+  nn.Flatten(), 
+  #Why did we reduce the number of units into the Linear layer by a factor of $4^2$? Because pooling a 2x2 grid down to one value means we go from 4 values, down to 1, and we did this two times. 
+  nn.Linear(2*filters*D//(4**2), classes),
+)
+
+cnn_results_with_pool = train_simple_network(model_cnn_pool, loss_func, mnist_train_loader, test_loader=mnist_test_loader, score_funcs={'Accuracy': accuracy_score}, device=device, epochs=20)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T15:09:01.353894Z', start_time: '2021-03-22T15:09:01.338110Z'}
+model = model_cnn_pool.cpu().eval()
+img_pred = pred(model, img)
+img_lr_pred = pred(model, img_lr)
+img_ul_pred = pred(model, img_ul)
+
+print("Org Img Class {} Prob:         ".format(correct_class) , img_pred[correct_class])
+print("Lower Right Img Class {} Prob: ".format(correct_class) , img_lr_pred[correct_class])
+print("Uper Left Img Class {} Prob:   ".format(correct_class) , img_ul_pred[correct_class])
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T15:09:01.598559Z', start_time: '2021-03-22T15:09:01.355242Z'}
+sns.lineplot(x='epoch', y='test Accuracy', data=cnn_results, label='Simple CNN')
+sns.lineplot(x='epoch', y='test Accuracy', data=cnn_results_with_pool, label='CNN w/ Max Pooling')
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T15:09:02.472082Z', start_time: '2021-03-22T15:09:01.599867Z'}
+#Several built-in transformations, given some agressive values to make their impact more obvious.  
+sample_transforms = {
+    "Rotation" : transforms.RandomAffine(degrees=45),
+    "Translation" : transforms.RandomAffine(degrees=0, translate=(0.1,0.1)),
+    "Shear": transforms.RandomAffine(degrees=0, shear=45),
+    "RandomCrop" : transforms.RandomCrop((20,20)),
+    "Horizontal Flip" : transforms.RandomHorizontalFlip(p=1.0),
+    "Vertical Flip": transforms.RandomVerticalFlip(p=1.0),
+    "Perspective": transforms.RandomPerspective(p=1.0),   
+    "ColorJitter" : transforms.ColorJitter(brightness=0.9, contrast=0.9)
+}
+#Convert the Tensor image back to a PIL image using a transform
+pil_img = transforms.ToPILImage()(img)
+#Plot a randomy application of each transform
+f, axarr = plt.subplots(2,4)
+for count, (name, t) in enumerate(sample_transforms.items()):
+    row = count % 4
+    col = count // 4
+    axarr[col,row].imshow(t(pil_img), cmap='gray')
+    axarr[col,row].set_title(name)
+plt.show()
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T15:09:02.499210Z', start_time: '2021-03-22T15:09:02.473350Z'}
+train_transform = transforms.Compose([
+    transforms.RandomAffine(degrees=5, translate=(0.05, 0.05), scale=(0.98, 1.02)),
+    transforms.ToTensor(),
+])
+
+test_transform = transforms.ToTensor()
+
+mnist_train_t = torchvision.datasets.MNIST("./data", train=True, transform=train_transform)
+mnist_test_t = torchvision.datasets.MNIST("./data", train=False, transform=test_transform)
+mnist_train_loader_t = DataLoader(mnist_train_t, shuffle=True,  batch_size=B, num_workers=5)
+mnist_test_loader_t = DataLoader(mnist_test_t, batch_size=B, num_workers=5)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T15:13:44.875053Z', start_time: '2021-03-22T15:09:02.500926Z'}
+#| tags: [remove_output]
+model_cnn_pool = nn.Sequential(
+  nn.Conv2d(C, filters, 3, padding=3//2), 
+  nn.Tanh(),
+  nn.Conv2d(filters, filters, 3, padding=3//2), 
+  nn.Tanh(),
+  nn.Conv2d(filters, filters, 3, padding=3//2), 
+  nn.Tanh(),
+  nn.MaxPool2d(2),
+  nn.Conv2d(filters, 2*filters, 3, padding=3//2), 
+  nn.Tanh(),
+  nn.Conv2d(2*filters, 2*filters, 3, padding=3//2), 
+  nn.Tanh(),
+  nn.Conv2d(2*filters, 2*filters, 3, padding=3//2), 
+  nn.Tanh(),
+  nn.MaxPool2d(2),
+  nn.Flatten(), 
+  nn.Linear(2*filters*D//(4**2), classes),
+)
+
+cnn_results_with_pool_augmented = train_simple_network(model_cnn_pool, loss_func, mnist_train_loader_t, test_loader=mnist_test_loader_t, score_funcs={'Accuracy': accuracy_score}, device=device, epochs=20)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T15:13:45.117991Z', start_time: '2021-03-22T15:13:44.876560Z'}
+sns.lineplot(x='epoch', y='test Accuracy', data=cnn_results_with_pool, label='CNN w/ Max Pooling')
+sns.lineplot(x='epoch', y='test Accuracy', data=cnn_results_with_pool_augmented, label='CNN w/ Max Pooling + Augmentation')
+```

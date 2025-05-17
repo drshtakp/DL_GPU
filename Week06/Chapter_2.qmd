@@ -1,0 +1,489 @@
+---
+title: "Ch2. Fully connected networks"
+format:
+  html:
+    code-fold: true
+jupyter: python3
+---
+
+# This chapter covers
+
+   -  Implementing a training loop in PyTorch
+   -  Changing loss functions for regression and classification problems
+   -  Implementing and training a fully connected network
+   -  Training faster using smaller batches of data
+
+From "Inside Deep Learning" by Edward Raff
+
+https://github.com/EdwardRaff/Inside-Deep-Learning
+
+## R-Python Toolkits if Run in RStudio
+
+ - `library(reticulate)`
+ - Gilbreth `use_python("/depot/gdsp/apps/MLPy/bin/python3")`
+ - Local (example only) `use_python("/Users/wen-wen/opt/miniconda3/envs/dl/bin/python3")`
+ - `py_config()`
+ - `repl_python()`
+
+## Jupyter Kernel to Use if Run in Jupyter Notebook
+
+ - Gilbreth: `MLPy-py3.8.5` or `learning/conda-2020.11-py38-gpu`
+
+
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:54:42.526837Z', start_time: '2021-03-22T03:54:41.927847Z'}
+#| tags: [remove_cell]
+from tqdm.autonotebook import tqdm
+
+import numpy as np
+import seaborn as sns
+import matplotlib
+import matplotlib.pyplot as plt
+
+import pandas as pd
+
+import time
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:54:42.998042Z', start_time: '2021-03-22T03:54:42.534066Z'}
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import * 
+from idlmam import *
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:54:43.005648Z', start_time: '2021-03-22T03:54:43.000225Z'}
+#| tags: [remove_cell]
+%matplotlib inline
+from IPython.display import set_matplotlib_formats
+set_matplotlib_formats('png', 'pdf')
+
+def set_seed(seed):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+torch.backends.cudnn.deterministic=True
+set_seed(42)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:54:43.012355Z', start_time: '2021-03-22T03:54:43.007183Z'}
+def train_simple_network(model, loss_func, training_loader, epochs=20, device="cpu"):
+    #Yellow step is done here. We create the optimizer and move the model to the compute device
+    #SGD is Stochastic Gradient Decent over the parameters $\Theta$
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+
+    #Place the model on the correct compute resource (CPU or GPU)
+    model.to(device)
+    #The next two for loops handle the Red steps, iterating through all the data (batches) multiple times (epochs)
+    for epoch in tqdm(range(epochs), desc="Epoch"):
+    
+        model = model.train()#Put our model in training mode
+        running_loss = 0.0
+
+        for inputs, labels in tqdm(training_loader, desc="Batch", leave=False):
+            #Move the batch of data to the device we are using. this is the last red step
+            inputs = moveTo(inputs, device)
+            labels = moveTo(labels, device)
+
+            #First a yellow step, prepare the optimizer. Most PyTorch code will do this first to make sure everything is in a clean and ready state. 
+
+            #PyTorch stores gradients in a mutable data structure. So we need to set it to a clean state before we use it. 
+            #Otherwise, it will have old information from a previous iteration
+            optimizer.zero_grad()
+
+            #The next two lines of code perform the two blue steps
+            y_hat = model(inputs) #this just computed $f_\theta(\boldsymbol{x_i})$
+
+            # Compute loss.
+            loss = loss_func(y_hat, labels)
+
+            #Now the remaining two yellow steps, compute the gradient and ".step()" the optimizer
+            loss.backward()# $\nabla_\Theta$ just got computed by this one call
+
+            #Now we just need to update all the parameters
+            optimizer.step()# $\Theta_{k+1} = \Theta_k − \eta \cdot \nabla_\Theta \ell(\hat{y}, y)$
+
+            #Now we are just grabbing some information we would like to have
+            running_loss += loss.item()
+#Caption: This code defines a simple training loop, which can be used to learn the parameters $\Theta$ to almost any neural network $f_\Theta(\cdot)$ we will use in this book. 
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:54:43.246581Z', start_time: '2021-03-22T03:54:43.013603Z'}
+#Crate a 1-dimensional input
+X = np.linspace(0, 20, num=200)
+#create an output
+y = X + np.sin(X)*2 + np.random.normal(size=X.shape)
+sns.scatterplot(x=X, y=y)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:54:43.251798Z', start_time: '2021-03-22T03:54:43.247819Z'}
+class Simple1DRegressionDataset(Dataset):
+        
+    def __init__(self, X, y):
+        super(Simple1DRegressionDataset, self).__init__()
+        self.X = X.reshape(-1,1)
+        self.y = y.reshape(-1,1)
+        
+    
+    def __getitem__(self, index):
+        return torch.tensor(self.X[index,:], dtype=torch.float32), torch.tensor(self.y[index], dtype=torch.float32)
+
+    def __len__(self):
+        return self.X.shape[0]
+    
+training_loader = DataLoader(Simple1DRegressionDataset(X, y), shuffle=True)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:54:50.229124Z', start_time: '2021-03-22T03:54:43.252990Z'}
+#| tags: [remove_output]
+in_features = 1
+out_features = 1
+model = nn.Linear(in_features, out_features)
+loss_func = nn.MSELoss()
+
+device = torch.device("cuda")
+train_simple_network(model, loss_func, training_loader, device=device)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:54:50.234488Z', start_time: '2021-03-22T03:54:50.231083Z'}
+with torch.no_grad():
+    Y_pred = model(torch.tensor(X.reshape(-1,1), device=device, dtype=torch.float32)).cpu().numpy()
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:54:50.546517Z', start_time: '2021-03-22T03:54:50.236073Z'}
+sns.scatterplot(x=X, y=y, color='blue', label='Data') #The data
+sns.lineplot(x=X, y=Y_pred.ravel(), color='red', label='Linear Model') #What our model learned
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:54:52.736548Z', start_time: '2021-03-22T03:54:50.548436Z'}
+#| tags: [remove_output]
+#Input "layer" is implicitly the input 
+model = nn.Sequential(
+    nn.Linear(1,  10), #Hidden layer
+    nn.Linear(10, 1), #Output layer
+)
+
+train_simple_network(model, loss_func, training_loader)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:54:53.011027Z', start_time: '2021-03-22T03:54:52.739923Z'}
+with torch.no_grad():
+    Y_pred = model(torch.tensor(X.reshape(-1,1), dtype=torch.float32)).cpu().numpy() #Shape of (N, 1)
+    
+sns.scatterplot(x=X, y=y, color='blue', label='Data') #The data
+sns.lineplot(x=X, y=Y_pred.ravel(), color='red', label='Model') #What our model learned
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:54:53.524918Z', start_time: '2021-03-22T03:54:53.012690Z'}
+activation_input = np.linspace(-2, 2, num=200)
+tanh_activation = np.tanh(activation_input)
+sigmoid_activation = np.exp(activation_input)/(np.exp(activation_input)+1)
+sns.lineplot(x=activation_input, y=activation_input, color='black', label="linear")
+sns.lineplot(x=activation_input, y=tanh_activation, color='red', label="tanh(x)")
+ax = sns.lineplot(x=activation_input, y=sigmoid_activation, color='blue', label="$\sigma(x)$")
+ax.set_xlabel('Input value x')
+ax.set_ylabel('Activation')
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:55:13.809330Z', start_time: '2021-03-22T03:54:53.526463Z'}
+#| tags: [remove_output]
+model = nn.Sequential(
+    nn.Linear(1,  10),#hidden layer
+    nn.Tanh(),#activation
+    nn.Linear(10, 1),#output layer
+)
+
+train_simple_network(model, loss_func, training_loader, epochs=200)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:55:14.168007Z', start_time: '2021-03-22T03:55:13.810608Z'}
+with torch.no_grad():
+    Y_pred = model(torch.tensor(X.reshape(-1,1), dtype=torch.float32)).cpu().numpy()
+    
+sns.scatterplot(x=X, y=y, color='blue', label='Data') #The data
+sns.lineplot(x=X, y=Y_pred.ravel(), color='red', label='Model') #What our model learned
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:55:14.635122Z', start_time: '2021-03-22T03:55:14.169268Z'}
+from sklearn.datasets import make_moons
+X, y = make_moons(n_samples=200, noise=0.05)
+sns.scatterplot(x=X[:,0], y=X[:,1], hue=y, style=y)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:55:14.639500Z', start_time: '2021-03-22T03:55:14.636500Z'}
+classification_dataset = torch.utils.data.TensorDataset(torch.tensor(X, dtype=torch.float32), torch.tensor(y, dtype=torch.long))
+training_loader = DataLoader(classification_dataset)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:55:14.645626Z', start_time: '2021-03-22T03:55:14.640916Z'}
+in_features = 2
+out_features = 2
+model = nn.Linear(in_features, out_features)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:55:18.756503Z', start_time: '2021-03-22T03:55:14.647095Z'}
+#| tags: [remove_output]
+loss_func = nn.CrossEntropyLoss()
+train_simple_network(model, loss_func, training_loader, epochs=50)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:55:19.088127Z', start_time: '2021-03-22T03:55:18.757663Z'}
+def visualize2DSoftmax(X, y, model, title=None):
+    x_min = np.min(X[:,0])-0.5
+    x_max = np.max(X[:,0])+0.5
+    y_min = np.min(X[:,1])-0.5
+    y_max = np.max(X[:,1])+0.5
+    xv, yv = np.meshgrid(np.linspace(x_min, x_max, num=20), np.linspace(y_min, y_max, num=20), indexing='ij')
+    xy_v = np.hstack((xv.reshape(-1,1), yv.reshape(-1,1)))
+    with torch.no_grad():
+        logits = model(torch.tensor(xy_v, dtype=torch.float32))
+        y_hat = F.softmax(logits, dim=1).numpy()
+
+    cs = plt.contourf(xv, yv, y_hat[:,0].reshape(20,20), levels=np.linspace(0,1,num=20), cmap=plt.cm.RdYlBu)
+    ax = plt.gca()
+    sns.scatterplot(x=X[:,0], y=X[:,1], hue=y, style=y, ax=ax)
+    if title is not None:
+        ax.set_title(title)
+
+visualize2DSoftmax(X, y, model)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:55:48.545668Z', start_time: '2021-03-22T03:55:19.089448Z'}
+#| tags: [remove_output]
+model = nn.Sequential(
+    nn.Linear(2,  30),
+    nn.Tanh(),
+    nn.Linear(30,  30),
+    nn.Tanh(),
+    nn.Linear(30, 2),
+)
+train_simple_network(model, loss_func, training_loader, epochs=250)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:55:48.890523Z', start_time: '2021-03-22T03:55:48.546909Z'}
+visualize2DSoftmax(X, y, model)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:55:48.897980Z', start_time: '2021-03-22T03:55:48.891771Z'}
+#| tags: [remove_cell]
+def run_epoch(model, optimizer, data_loader, loss_func, device, results, score_funcs, prefix="", desc=None):
+    running_loss = []
+    y_true = []
+    y_pred = []
+    start = time.time()
+    for inputs, labels in tqdm(data_loader, desc=desc, leave=False):
+        #Move the batch to the device we are using. 
+        inputs = moveTo(inputs, device)
+        labels = moveTo(labels, device)
+
+        y_hat = model(inputs) #this just computed f_Θ(x(i))
+        # Compute loss.
+        loss = loss_func(y_hat, labels)
+
+        if model.training:
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+        #Now we are just grabbing some information we would like to have
+        running_loss.append(loss.item())
+
+        if len(score_funcs) > 0 and isinstance(labels, torch.Tensor):
+            #moving labels & predictions back to CPU for computing / storing predictions
+            labels = labels.detach().cpu().numpy()
+            y_hat = y_hat.detach().cpu().numpy()
+            #add to predictions so far
+            y_true.extend(labels.tolist())
+            y_pred.extend(y_hat.tolist())
+    #end training epoch
+    end = time.time()
+    
+    y_pred = np.asarray(y_pred)
+    if len(y_pred.shape) == 2 and y_pred.shape[1] > 1: #We have a classification problem, convert to labels
+        y_pred = np.argmax(y_pred, axis=1)
+    #Else, we assume we are working on a regression problem
+    
+    results[prefix + " loss"].append( np.mean(running_loss) )
+    for name, score_func in score_funcs.items():
+        try:
+            results[prefix + " " + name].append( score_func(y_true, y_pred) )
+        except:
+            results[prefix + " " + name].append(float("NaN"))
+    return end-start #time spent on epoch
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:55:48.905343Z', start_time: '2021-03-22T03:55:48.899287Z'}
+#| tags: [remove_cell]
+def train_simple_network(model, loss_func, train_loader, test_loader=None, score_funcs=None, 
+                         epochs=50, device="cpu", checkpoint_file=None):
+    to_track = ["epoch", "total time", "train loss"]
+    if test_loader is not None:
+        to_track.append("test loss")
+    for eval_score in score_funcs:
+        to_track.append("train " + eval_score )
+        if test_loader is not None:
+            to_track.append("test " + eval_score )
+        
+    total_train_time = 0 #How long have we spent in the training loop? 
+    results = {}
+    #Initialize every item with an empty list
+    for item in to_track:
+        results[item] = []
+        
+    #SGD is Stochastic Gradient Decent.
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+    #Place the model on the correct compute resource (CPU or GPU)
+    model.to(device)
+    for epoch in tqdm(range(epochs), desc="Epoch"):
+        model = model.train()#Put our model in training mode
+        
+        total_train_time += run_epoch(model, optimizer, train_loader, loss_func, device, results, score_funcs, prefix="train", desc="Training")
+
+        results["total time"].append( total_train_time )
+        results["epoch"].append( epoch )
+        
+        if test_loader is not None:
+            model = model.eval()
+            with torch.no_grad():
+                run_epoch(model, optimizer, test_loader, loss_func, device, results, score_funcs, prefix="test", desc="Testing")
+                    
+    if checkpoint_file is not None:
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'results' : results
+            }, checkpoint_file)
+
+    return pd.DataFrame.from_dict(results)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:55:48.916969Z', start_time: '2021-03-22T03:55:48.906486Z'}
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import f1_score
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:55:48.924011Z', start_time: '2021-03-22T03:55:48.918223Z'}
+X_train, y_train = make_moons(n_samples=8000, noise=0.4)
+X_test, y_test = make_moons(n_samples=200, noise=0.4)
+train_dataset = TensorDataset(torch.tensor(X_train, dtype=torch.float32), torch.tensor(y_train, dtype=torch.long))
+test_dataset = TensorDataset(torch.tensor(X_test, dtype=torch.float32), torch.tensor(y_test, dtype=torch.long))
+training_loader = DataLoader(train_dataset, shuffle=True)
+testing_loader = DataLoader(test_dataset)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:56:08.551833Z', start_time: '2021-03-22T03:55:48.925105Z'}
+#| tags: [remove_output]
+model = nn.Sequential(
+    nn.Linear(2,  30),
+    nn.Tanh(),
+    nn.Linear(30,  30),
+    nn.Tanh(),
+    nn.Linear(30, 2),
+)
+results_pd = train_simple_network(model, loss_func, training_loader, epochs=5, test_loader=testing_loader, checkpoint_file='model.pt', score_funcs={'Acc':accuracy_score,'F1': f1_score})
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:56:09.231802Z', start_time: '2021-03-22T03:56:08.553142Z'}
+model_new = nn.Sequential(
+    nn.Linear(2,  30),
+    nn.Tanh(),
+    nn.Linear(30,  30),
+    nn.Tanh(),
+    nn.Linear(30, 2),
+)
+
+visualize2DSoftmax(X_test, y_test, model_new, title="Initial Model")
+plt.show()
+
+checkpoint_dict = torch.load('model.pt', map_location=device)
+
+
+model_new.load_state_dict(checkpoint_dict['model_state_dict'])
+
+visualize2DSoftmax(X_test, y_test, model_new, title="Loaded Model")
+plt.show()
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:56:09.568173Z', start_time: '2021-03-22T03:56:09.233253Z'}
+sns.lineplot(x='epoch', y='train Acc', data=results_pd, label='Train')
+sns.lineplot(x='epoch', y='test Acc', data=results_pd, label='Validation')
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:56:09.823298Z', start_time: '2021-03-22T03:56:09.569471Z'}
+sns.lineplot(x='total time', y='train F1', data=results_pd, label='Train')
+sns.lineplot(x='total time', y='test F1', data=results_pd, label='Validation')
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:56:10.548208Z', start_time: '2021-03-22T03:56:09.824633Z'}
+#| tags: [remove_output]
+training_loader = DataLoader(train_dataset, batch_size=len(train_dataset), shuffle=True)
+testing_loader = DataLoader(test_dataset, batch_size=len(test_dataset))
+model_gd = nn.Sequential(
+    nn.Linear(2,  30),
+    nn.Tanh(),
+    nn.Linear(30,  30),
+    nn.Tanh(),
+    nn.Linear(30, 2),
+)
+results_true_gd = train_simple_network(model_gd, loss_func, training_loader, epochs=5, test_loader=testing_loader, checkpoint_file='model.pt', score_funcs={'Acc':accuracy_score,'F1': f1_score})
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:56:10.804880Z', start_time: '2021-03-22T03:56:10.553937Z'}
+sns.lineplot(x='total time', y='test Acc', data=results_pd, label='SGD, B=1')
+sns.lineplot(x='total time', y='test Acc', data=results_true_gd, label='GD, B=N')
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:56:13.570509Z', start_time: '2021-03-22T03:56:12.336621Z'}
+#| tags: [remove_output]
+training_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+model_sgd = nn.Sequential(
+    nn.Linear(2,  30),
+    nn.Tanh(),
+    nn.Linear(30,  30),
+    nn.Tanh(),
+    nn.Linear(30, 2),
+)
+results_batched = train_simple_network(model_sgd, loss_func, training_loader, epochs=5, test_loader=testing_loader, checkpoint_file='model.pt', score_funcs={'Acc':accuracy_score,'F1': f1_score})
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T03:56:13.867710Z', start_time: '2021-03-22T03:56:13.578197Z'}
+sns.lineplot(x='total time', y='test Acc', data=results_pd, label='SGD, B=1')
+sns.lineplot(x='total time', y='test Acc', data=results_true_gd, label='GD, B=N')
+sns.lineplot(x='total time', y='test Acc', data=results_batched, label='SGD, B=32')
+```
+

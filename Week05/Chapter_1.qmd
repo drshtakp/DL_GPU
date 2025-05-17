@@ -1,0 +1,471 @@
+---
+title: "Ch1. The mechanics of learning"
+format:
+  html:
+    code-fold: true
+jupyter: python3
+---
+
+
+# This chapter covers
+
+ -    Introducing PyTorch https://pytorch.org/docs/stable/index.html, a tensor-based API for deep learning
+ -    Running faster code with PyTorch’s GPU acceleration
+ -    Understanding automatic differentiation as the basis of learning
+ -    Using the Dataset interface to prepare data
+
+**Figures, text, and codes taken from "Inside Deep Learning" by Edward Raff for GDS Fall 2023 seminar course only. Please do not distribute.**
+
+![View](raff_includesFullColorIllustrations.jpg)
+
+https://github.com/EdwardRaff/Inside-Deep-Learning
+
+## R-Python Toolkits if Run in RStudio
+
+ - `library(reticulate)`
+ - Gilbreth `use_python("/depot/gdsp/apps/MLPy/bin/python3")`
+ - Local (example only) `use_python("/Users/wen-wen/opt/miniconda3/envs/dl/bin/python3")`
+ - `py_config()`
+ - `repl_python()`
+
+## Jupyter Kernel to Use if Run in Jupyter Notebook
+
+ - Gilbreth: `MLPy-py3.8.5` or `learning/conda-2020.11-py38-gpu`
+
+# 1.1 Some characteristics of Deep Learning
+
+"Figure 1.1 A (simplified) hierarchy of AI, ML, and deep learning"
+
+![View](CH01_F01_Raff.png)
+
+"Deep learning is not one algorithm, but hundreds of small algorithms that act like building blocks. Part of being a good practitioner is knowing what building blocks are available and which ones to stick together to create a larger model for your problem. Each building block is designed to work well for certain problems, giving the model valuable information."
+
+"Figure 1.2 A defining characteristic of deep learning is building models from reusable blocks. Different blocks are useful for different kinds of data and can be mixed and matched to deal with different problems. The first row shows how blocks of the same type can be repeated to make a deeper model, which can improve accuracy."
+
+![View](CH01_F02_Raff.png)
+
+"These building blocks define our model, but as in all ML, we also need data and a mechanism for learning. When we say learning, we are not talking about the way humans learn. In machine (and deep) learning, learning is the mechanical process of getting the model to make smart-looking predictions about data. This happens via a process called optimization or function minimization. Before we see any data, our model returns random outputs because all of the parameters (the numbers that control what is computed) are initialized to random values. In a common tool like linear regression, the regression coefficients are the parameters. By optimizing the blocks over the data, we make our models learn. This gives us the larger picture in figure 1.3."
+
+"Figure 1.3 The “car” of deep learning. The car is built from many different building blocks, and we can use assortments of building blocks to build cars for different tasks. But we need fuel and wheels to make the car go. The wheels are the task of learning, which is done via a process called optimization; and the fuel is data."
+
+![View](CH01_F03_Raff.png)
+
+# 1.1 Common data science and ML tools from Python
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:54.107372Z', start_time: '2021-03-22T05:32:53.400242Z'}
+#| tags: [remove_output]
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np
+from tqdm.autonotebook import tqdm
+import pandas as pd
+```
+
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:54.114216Z', start_time: '2021-03-22T05:32:54.109474Z'}
+#| tags: [remove_cell]
+%matplotlib inline
+from matplotlib_inline.backend_inline import set_matplotlib_formats
+set_matplotlib_formats('png', 'pdf')
+```
+
+# 1.2 The world as tensors
+
+Tensor is how we represent information in PyTorch. DL works with just one data type, and we must convert all our data into this format. 
+
+"Tensors (aka n-dimensional arrays) are used to represent both data, the inputs/outputs to any deep learning block, and the parameters that control the behavior of our networks. Two essential features are built into tensor objects: the ability to do fast parallel computation with GPUs and the ability to do some calculus (derivatives) automatically."
+
+"Figure 1.4 Examples of tensors, with more dimensions or axes as we move from left to right. A scalar represents a single value. A vector is a list of values and is how we often think about one datapoint. A matrix is a grid of values and is often used for a dataset. A three-dimensional tensor can be used to represent a dataset of sequences."
+
+![View](CH01_F04_Raff.png)
+
+
+### Tensor dimensions (B, C, W, H)
+
+  -  B: The number of batches being used.
+  -  C: The number of channels in an input (e.g., think of "Red, Green, Blue" as three channels) or the number of classes/categories that a model could output.
+  -  W and H: The width and height of an image (almost always in conjunction with a "C" dimension for the channels of an image).
+  -  D or H: The number of neurons/outputs in a hidden layer (sometimes N is also used for this).
+  -  T: The number of items in a sequence.
+
+"Figure 1.5 A tensor can be sliced to grab sub-tensors from a larger one. For example, in red, we grab a row-vector from the larger matrix; and in blue, we grab a column-vector from the matrix. Depending on what the tensor represents, this can let us manipulate different parts of the data."
+
+![View](CH01_F05_Raff.png)
+
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:54.669963Z', start_time: '2021-03-22T05:32:54.116147Z'}
+import torch
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:54.676062Z', start_time: '2021-03-22T05:32:54.671481Z'}
+torch_scalar = torch.tensor(3.14)
+torch_vector = torch.tensor([1, 2, 3, 4])
+torch_matrix = torch.tensor([[1, 2,],
+                             [3, 4,],
+                             [5, 6,], 
+                             [7, 8,]])
+#You don't have to format it like I did, thats just for clarity
+torch_tensor3d = torch.tensor([
+                            [
+                            [ 1,  2,  3], 
+                            [ 4,  5,  6],
+                            ],
+                            [
+                            [ 7,  8,  9], 
+                            [10, 11, 12],
+                            ],
+                            [
+                            [13, 14, 15], 
+                            [16, 17, 18],
+                            ],
+                            [
+                            [19, 20, 21], 
+                            [22, 23, 24],
+                            ]
+                              ])
+```
+
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:54.688664Z', start_time: '2021-03-22T05:32:54.677220Z'}
+print(torch_scalar.shape)
+print(torch_vector.shape)
+print(torch_matrix.shape)
+print(torch_tensor3d.shape)
+```
+
+"PyTorch supports converting NumPy objects into their PyTorch counterparts." 
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:54.694456Z', start_time: '2021-03-22T05:32:54.690164Z'}
+x_np = np.random.random((4,4))
+print(x_np)
+```
+
+"By default, NumPy uses 64-bit floats, and PyTorch defaults to 32-bit floats. However, if you create a PyTorch tensor from a NumPy tensor, it uses the same type as the given NumPy tensor."
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:54.701736Z', start_time: '2021-03-22T05:32:54.697048Z'}
+x_pt = torch.tensor(x_np)
+print(x_pt)
+```
+"The most common types we care about for deep learning are 32-bit floats, 64-bit integers (Longs), and booleans (i.e., binary True/False)."
+
+"The following code checks what type of data is contained in our tensor using the `dtype` attribute:"
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:54.708524Z', start_time: '2021-03-22T05:32:54.703648Z'}
+print(x_np.dtype, x_pt.dtype)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:54.715713Z', start_time: '2021-03-22T05:32:54.710165Z'}
+#Lets force them to be 32-bit floats
+x_np = np.asarray(x_np, dtype=np.float32)
+x_pt = torch.tensor(x_np, dtype=torch.float32)
+print(x_np.dtype, x_pt.dtype)
+```
+### PyTorch vs NumPy Binary Masks
+
+"A mask is a tensor that tells us which portions of another tensor are valid to use. We use masks in some of our more complex neural networks. For example, let’s say we want to find every value greater than 0.5 in a tensor."
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:54.722368Z', start_time: '2021-03-22T05:32:54.717373Z'}
+b_np = (x_np > 0.5)
+print(b_np)
+print(b_np.dtype)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:54.729593Z', start_time: '2021-03-22T05:32:54.724132Z'}
+b_pt = (x_pt > 0.5)
+print(b_pt)
+print(b_pt.dtype)
+```
+
+### PyTorch vs NumPy Summation
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:54.737835Z', start_time: '2021-03-22T05:32:54.730952Z'}
+np.sum(x_np)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:54.743037Z', start_time: '2021-03-22T05:32:54.739198Z'}
+torch.sum(x_pt)
+```
+### PyTorch vs NumPy Transpose
+
+"PyTorch requires us to specify which two dimensions to transpose. NumPy takes the two dimensions and transposes them without complaint."
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:54.747879Z', start_time: '2021-03-22T05:32:54.744383Z'}
+np.transpose(x_np)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:54.755058Z', start_time: '2021-03-22T05:32:54.749723Z'}
+torch.transpose(x_pt, 0, 1)
+```
+
+## 1.2.1 PyTorch GPU acceleration
+
+"GPUs are hardware in your computer specifically designed for 2D and 3D graphics, mainly to accelerate videos (watching an HD movie) or play video games... a lot of the math involved in making 2D and 3D graphics fast is tensor-based or at least tensor-related. For this reason, GPUs have been getting good at doing many things we want very quickly. As graphics, and thus GPUs, became better and more powerful, people realized they could also be used for scientific computing and ML."
+
+"The trick to using GPUs effectively is to avoid computing on a small amount of data. This is because your computer’s CPU must first move data to the GPU, then ask the GPU to perform its math, wait for the GPU to finish, and then copy the results back from the GPU. The steps in this process are fairly slow; and if we are only calculating a few things, using a GPU takes longer than the CPU would take to do the math."
+
+### Benchmarking a matrix multiplication
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:54.763796Z', start_time: '2021-03-22T05:32:54.756945Z'}
+print(torch.transpose(torch_tensor3d, 0, 2).shape)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:59.532902Z', start_time: '2021-03-22T05:32:54.765163Z'}
+import timeit
+x = torch.rand(2**11, 2**11)
+time_cpu = timeit.timeit("x@x", globals=globals(), number=100)
+```
+
+"How do we get PyTorch to use our GPU? First we need to create a `device` reference. We can ask PyTorch to give us one using the `torch.device` function. If you have an NVIDIA GPU, and the CUDA drivers are installed properly, you should be able to pass in `cuda` as a string and get back an object representing that device:"
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:32:59.578188Z', start_time: '2021-03-22T05:32:59.539627Z'}
+print("Is CUDA available? :", torch.cuda.is_available())
+device = torch.device("cuda")
+```
+
+CUDA (Compute Unified Device Architecture) is a parallel computing platform and application programming interface (API) model created by NVIDIA. It allows developers to use NVIDIA GPUs (Graphics Processing Units) for general purpose processing (an approach known as GPGPU, General-Purpose computing on Graphics Processing Units).
+
+"Now that we have a reference to the GPU (device) we want to use, we need to ask PyTorch to move that object to the given device:"
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:33:01.740576Z', start_time: '2021-03-22T05:32:59.580308Z'}
+x = x.to(device)
+time_gpu = timeit.timeit("x@x", globals=globals(), number=100)
+```
+
+"Sometimes we want to store tensors and other PyTorch objects in a list, dictionary, or other standard Python collection. To help with that, we can define this `moveTo` function, which goes recursively through the common Python and PyTorch containers and moves every object found onto the specified device:"
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:33:01.957208Z', start_time: '2021-03-22T05:33:01.750393Z'}
+def moveTo(obj, device):
+    """
+    obj: the python object to move to a device, or to move its contents to a device
+    device: the compute device to move objects to
+    """
+    if isinstance(obj, list):
+        return [moveTo(x, device) for x in obj]
+    elif isinstance(obj, tuple):
+        return tuple(moveTo(list(obj), device))
+    elif isinstance(obj, set):
+        return set(moveTo(list(obj), device))
+    elif isinstance(obj, dict):
+        to_ret = dict()
+        for key, value in obj.items():
+            to_ret[moveTo(key, device)] = moveTo(value, device)
+        return to_ret
+    elif hasattr(obj, "to"):
+        return obj.to(device)
+    else:
+        return obj
+    
+some_tensors = [torch.tensor(1), torch.tensor(2)]
+print(some_tensors)
+print(moveTo(some_tensors, device))
+```
+
+# 1.3 Automatic differentiation
+
+"So far, we’ve seen that PyTorch provides an API similar to NumPy for performing mathematical operations on tensors, with the advantage of using a GPU (when available) to perform faster math operations." 
+
+"The second major foundation that PyTorch gives us is automatic differentiation: as long as we use PyTorch-provided functions, PyTorch can compute derivatives (also called gradients) automatically for us."
+
+### What is a derivative, and why do I care about that?
+
+ - derivative of a function f(x) tells us how quickly the value of f(x) is changing
+ - we can use the derivative of a function f(x) to help us find an input x\* that is a minimizer of f(x).
+ 
+" The value x\* being a minimizer means the value of f(x\*) is smaller than f(x\*+z) for whatever value we set z to"
+
+![View](ch1-eqs-to-illustrator0x.png)
+ - The derivative is generally defined with respect to a single variable, but our networks will have many variables (parameters), hence gradient
+ 
+### Why do we want to minimize a function?
+
+"We train neural networks by defining a loss function. The loss function tells the network, in a numeric and quantifiable way, how badly it is doing at the problem. So if the loss is high, things are going poorly. A high loss means the network is losing the game, and badly. If the loss is zero, the network has solved the problem perfectly. We don’t usually allow the loss to go negative because that gets confusing to think about."
+
+Example: We have the function `f(x) = (x−2)^2`.
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:33:02.498610Z', start_time: '2021-03-22T05:33:01.960934Z'}
+def f(x):
+    return torch.pow((x-2.0), 2)
+
+x_axis_vals = np.linspace(-7,9,100) 
+y_axis_vals = f(torch.tensor(x_axis_vals)).numpy()
+
+sns.lineplot(x=x_axis_vals, y=y_axis_vals, label='$f(x)=(x-2)^2$')
+```
+
+
+## 1.3.1  Using derivatives to minimize losses
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:33:02.866511Z', start_time: '2021-03-22T05:33:02.501436Z'}
+def fP(x): #Defining the derivative of f(x) manually
+    return 2*x-4
+
+y_axis_vals_p = fP(torch.tensor(x_axis_vals)).numpy()
+
+#First, lets draw a black line at 0, so that we can easily tell if something is positive or negative
+sns.lineplot(x=x_axis_vals, y=[0.0]*len(x_axis_vals), label="0", color='black')
+sns.lineplot(x=x_axis_vals, y=y_axis_vals, label='$f(x) = (x-2)^2$')
+sns.lineplot(x=x_axis_vals, y=y_axis_vals_p, label="$f'(x)=2 x - 4$")
+```
+
+"Figure 1.6 The process to minimize a function `f(x)` using its derivative `f′(x)` is called gradient descent, and this figure shows how it is done. We iteratively compute `f′(x)` to decide whether x should be larger or smaller to make the value of `f(x)` as small as possible. The process stops when we are close enough to the gradient being zero. You can also stop early if you have done a lot of updates: "close enough is good enough" holds true for deep learning, and we rarely need to perfectly minimize a function."
+
+![View](CH01_F06_Raff.png)
+
+
+
+### 1.3.2  Calculating a derivative with automatic differentiation
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:33:02.872628Z', start_time: '2021-03-22T05:33:02.868281Z'}
+x = torch.tensor([-3.5], requires_grad=True)
+print(x.grad)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:33:02.879284Z', start_time: '2021-03-22T05:33:02.874597Z'}
+value = f(x)
+print(value)
+```
+
+"The value 30.25 is printed, which is the correct value of `f(−3.5)`. But we also see this new `grad_fn=<PowBackward0>`. Once we tell PyTorch to start calculating gradients, it begins to keep track of every computation we do. It uses this information to go backward and calculate the gradients for everything that was used and had a `requires_grad` flag set to True."
+
+"Once we have a single scalar value, we can tell PyTorch to go back and use this information to compute the gradients. This is done using the .backward() function, after which we see a gradient in our original object:"
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:33:02.887619Z', start_time: '2021-03-22T05:33:02.881506Z'}
+value.backward()
+print(x.grad)
+```
+
+"We have now computed a gradient for the variable `x`"
+
+
+## 1.3.3  Minimizing a function with derivatives
+
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:33:02.906233Z', start_time: '2021-03-22T05:33:02.888975Z'}
+x = torch.tensor([-3.5], requires_grad=True)
+
+x_cur = x.clone()
+x_prev = x_cur*100 #Make the initial "previous" solution larger
+epsilon = 1e-5
+eta = 0.1
+
+while torch.linalg.norm(x_cur-x_prev) > epsilon:
+    x_prev = x_cur.clone() #We need to make a clone here so that x_prev and x_cur don't point to the same object
+    
+    #Compute our function, gradient, and update
+    value = f(x)
+    value.backward()
+    x.data -= eta * x.grad
+    x.grad.zero_() #We need to zero out the old gradient, as py-torch will not do that for us
+    
+    #What are we currently now?
+    x_cur = x.data
+    
+print(x_cur)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:33:02.911171Z', start_time: '2021-03-22T05:33:02.908110Z'}
+x_param = torch.nn.Parameter(torch.tensor([-3.5]), requires_grad=True)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:33:02.916541Z', start_time: '2021-03-22T05:33:02.913522Z'}
+optimizer = torch.optim.SGD([x_param], lr=eta)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:33:02.933325Z', start_time: '2021-03-22T05:33:02.918744Z'}
+#| tags: [remove_output]
+for epoch in range(60):
+    optimizer.zero_grad() #x.grad.zero_()
+    loss_incurred  = f(x_param)
+    loss_incurred.backward()
+    optimizer.step() #x.data -= eta * x.grad
+print(x_param.data)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:33:18.679235Z', start_time: '2021-03-22T05:33:02.939654Z'}
+from torch.utils.data import Dataset
+from sklearn.datasets import fetch_openml
+
+# Load data from https://www.openml.org/d/554
+X, y = fetch_openml('mnist_784', version=1, return_X_y=True)
+print(X.shape)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:33:18.684096Z', start_time: '2021-03-22T05:33:18.680539Z'}
+class SimpleDataset(Dataset):
+        
+    def __init__(self, X, y):
+        super(SimpleDataset, self).__init__()
+        self.X = X
+        self.y = y
+    
+    def __getitem__(self, index):
+    # Check if X and y are pandas data structures and handle indexing accordingly
+        X_data = self.X.iloc[index, :] if hasattr(self.X, 'iloc') else self.X[index, :]
+        y_data = self.y.iloc[index] if hasattr(self.y, 'iloc') else self.y[index]
+
+        inputs = torch.tensor(X_data, dtype=torch.float32)
+        targets = torch.tensor(int(y_data), dtype=torch.int64)
+    
+        return inputs, targets
+
+    def __len__(self):
+        return self.X.shape[0]
+#Now we can make a PyTorch dataset 
+dataset = SimpleDataset(X, y)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:33:18.698359Z', start_time: '2021-03-22T05:33:18.685197Z'}
+print("Length: ", len(dataset))
+example, label = dataset[0]
+print("Features: ", example.shape) #Will return 784
+print("Label of index 0: ", label)
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:33:18.934961Z', start_time: '2021-03-22T05:33:18.700260Z'}
+#| max_h: 0.3
+#| max_w: 0.9
+plt.imshow(example.reshape((28,28)))
+```
+
+```{python}
+#| ExecuteTime: {end_time: '2021-03-22T05:33:18.943218Z', start_time: '2021-03-22T05:33:18.936102Z'}
+train_size = int(len(dataset)*0.8)
+test_size = len(dataset)-train_size
+
+train_dataset, test_dataset = torch.utils.data.random_split(dataset, (train_size, test_size))
+print("{} examples for training and {} for testing".format(len(train_dataset), len(test_dataset)))
+```
+

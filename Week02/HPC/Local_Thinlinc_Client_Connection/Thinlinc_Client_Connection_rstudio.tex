@@ -1,0 +1,180 @@
+\documentclass[aspectratio=169]{beamer}
+\usetheme{Madrid}
+\usecolortheme{seahorse}
+% uncomment to use Palatino
+\renewcommand\rmdefault{pplx}
+\renewcommand\mathfamilydefault{cmr}
+
+\mode<presentation> {
+%\setbeamertemplate{footline} % To remove the footer line in all slides uncomment this line
+\setbeamertemplate{footline}[page number] % To replace the footer line in all slides with a simple slide count uncomment this line
+\setbeamertemplate{navigation symbols}{} % To remove the navigation symbols from the bottom of all slides uncomment this line
+}
+
+\usepackage{epsfig}
+\usepackage{graphicx} % Allows including images
+\usepackage{booktabs} % Allows the use of \toprule, \midrule and \bottomrule in tables
+\graphicspath{ {figs/} 
+{../../analysis/spcam/OLR/} 
+{../../analysis/spcam/hov/} 
+}
+\usepackage{verbatim}
+\usepackage{fancyvrb}
+\usepackage{graphicx}
+\usepackage{url}
+
+\usepackage{hyperref}
+\hypersetup{colorlinks, linkcolor=red}
+
+\newcommand{\bb}{\color{blue} \bf}
+\newcommand{\rb}{\color{red} \bf}
+\newcommand{\br}{\color{blue}}
+\newcommand{\rr}{\color{red}}
+\newcommand{\yb}{\color{yellow}}
+
+\newcommand{\datadr}{{\br datadr }}
+\newcommand{\RHIPE}{{\br RHIPE }}
+\newcommand{\Hadoop}{{\br Hadoop }}
+\newcommand{\Spark}{{\br Spark }}
+\newcommand{\R}{{\br R }}
+\newcommand{\Trelliscope}{{\br Trelliscope }}
+\newcommand{\DeltaRho}{{\br DeltaRho }}
+
+
+
+%----------------------------------------------------------------------------------------
+%	TITLE PAGE
+%----------------------------------------------------------------------------------------
+
+
+
+\title[]{Getting Started with ThinLinc Connection to Gilbreth and Use RStudio} % The short title appears at the bottom of every slide, the full title is only on the title page
+
+\author{Wen-wen Tung} % Your name
+\institute[Purdue University] % Your institution as it will appear on the bottom of every slide, may be shorthand to save space
+{
+EAPS, Purdue University \\
+\medskip
+\textit{wwtung@purdue.edu } % Your email address
+}
+%\date{\today} % Date, can be changed to a custom date
+
+
+\begin{document}
+
+\begin{frame}
+\titlepage % Print the title page as the first slide
+\end{frame}
+
+%===================================================
+ \section*{Outline}
+ \begin{frame}
+    \frametitle{What you will learn}
+
+    \tableofcontents
+ \end{frame}
+ %===================================================
+ 
+%***********************************************************************
+
+\section{What is ThinLinc and how to use it to connect to a remote graphical desktop session}
+\begin{frame}
+\frametitle{ThinLinc}
+
+\begin{itemize}
+\item \href{https://www.cendio.com/thinlinc/what-is-thinlinc}{ThinLinc} is a service that allows you to connect to a persistent remote graphical desktop session. 
+
+\item Purdue ITaP Rosen Center for Advanced Computing (RCAC) provides ThinLinc so that users can run graphical applications or graphical interactive jobs directly on Gilbreth or several other RCAC high performance computing (HPC) clusters through a persistent remote graphical desktop session.
+
+\item There are two ways to use ThinLinc: the native client (ThinLinc Client) or through a web browser.
+
+\item \href{https://www.rcac.purdue.edu/knowledge/gilbreth/accounts/login/thinlinc}{Here} are the instructions to install and use ThinLinc Client or to use ThinLinc through a web browser to connect to the Gilbreth cluster.
+
+\end{itemize}
+
+\end{frame}
+%***********************************************************************
+
+\subsection{Use ThinLinc Client to connect to Purdue's Gilbreth cluster}
+
+\begin{frame}
+\frametitle{ThinLinc Client Connection to Gilbreth}
+
+\begin{itemize}
+\item The native client is a better choice than the web browser version because it permits copy-and-paste from and to your other desktop applications, such as Word or PDF viewers.
+
+\item Establishing a connection. Be sure to disable the full-screen mode:
+\begin{itemize}
+	\item Start the Client
+	\item \includegraphics[width=2in]{ThinLincClientView.jpeg}
+	\item Fill in ``Server:" {\bf desktop.gilbreth.rcac.purdue.edu}
+	\item Fill in your Purdue career account username in ``Name".
+	\item Enter your career account password (not Boilerkey) in ``Password"
+  	\item Click the ``Options..." button
+\end{itemize}
+
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{ThinLinc Client Connection to Gilbreth}
+
+\begin{itemize}
+	\item \includegraphics[width=2in]{ThinLincScreenOptions.png}
+\begin{itemize}
+	\item Choose the ``Screen" tab among the options
+	\item Deselect ``Full screen mode" and ``Enable full screen mode over all monitors"
+	\item Select ``OK" to return to client screen
+	\item Click ``Connect" to establish connection
+\end{itemize}
+
+\end{itemize}
+\end{frame}
+
+\section{Start RStudio with R 4.1.2 from Gilbreth Compute Desktop}
+
+%***********************************************************************
+\begin{frame}
+\frametitle{Start RStudio}
+        \begin{itemize}
+	\item In the ThinLinc remote desktop on Gilbreth, select the ``Terminal Emulator" on the bottom to start using command lines.
+        \item \includegraphics[width=3in]{ThinlincClientXterm_Gilbreth.png}
+	\item Before launching R the first time, follow the instruction here to create a .Rprofile:\\
+	https://www.rcac.purdue.edu/knowledge/gilbreth/run/examples/apps/r/rprofile
+        	\item To launch Rstudio, type the following sequence:\\
+	module load rstudio\\
+        rstudio \&
+        \end{itemize}
+\end{frame}
+
+%***********************************************************************
+
+\iffalse
+\begin{frame}[fragile]
+\frametitle{A simple Rhipe example}
+We will run the following example to check our Rhipe installation status.
+In R, after running the previous four commands to load Rhipe, we run the following code.
+
+\begin{Verbatim}
+## You need to replace YourLoginName 
+## with your login name.
+> dir.output1 <- "/user/YourLoginName/tmp/test1"
+> map <- expression({
+rhcollect(map.keys, map.values)
+})
+> mr <- rhwatch(
+  map = map, 
+  input = 100, 
+  mapred = list(mapreduce.job.maps=10),
+  output = rhfmt(dir.output1, type = "sequence"),
+  readback = TRUE
+)
+> str(mr)
+\end{Verbatim}
+\end{frame}
+
+\fi
+
+
+\end{document}

@@ -1,0 +1,84 @@
+---
+title: "Read and Plot HDF5 with Map"
+format: html
+---
+
+## Introduction
+
+```{r}
+library(ncdf4) # install.packages("ncdf4")
+library(lattice)
+library(latticeExtra)
+# optional nice color palette, called with `brewer.pal()` below
+library(RColorBrewer) 
+library(maps) # for map outlines
+```
+
+```{r}
+# Data 
+ncin <- nc_open("/depot/gdsp/data/GPM/091122/3B-HHR-L.MS.MRG.3IMERG.20220911-S110000-E112959.0660.V06C.HDF5")
+print(ncin)
+```
+
+##Comment
++ show the data structure
+
+```{r}
+lon <- ncvar_get(ncin,'Grid/lon')
+nlon<-dim(lon)
+lat <- ncvar_get(ncin,'Grid/lat')
+nlat<-dim(lat)
+time<-ncvar_get(ncin,'Grid/time')
+nt<-dim(time)
+```
+
+```{r}
+# Select dataset to plot.
+v1 <- ncin$var[['Grid/precipitationCal']]
+z_all<- ncvar_get(ncin,'Grid/precipitationCal')
+
+# Get fill value.
+fillvalue <- ncatt_get(ncin, v1, "_FillValue")
+nc_close(ncin)
+
+# Transform and Subset (no subset yet), transpose the original matrix
+z <- log2(t(z_all))
+# precipitation is notoriously bursty, many small values and few large values
+
+# NO NEED TO Flip upside down to geo-locate data properly.
+# z <- z[, ncol(z):1]
+
+# Skip fill values in plot.
+z[z == fillvalue$value] <- NA
+
+# Generate Grid and map outlines for plotting
+grid <- expand.grid(lon=lon,lat=lat)
+
+mapoutline<- map(database="world", plot=FALSE) 
+xymap <- data.frame(lon=mapoutline$x, lat=mapoutline$y)
+# note if xlim, ylim are set, they need to match the ones in levelplot
+
+# Define min/max values in the color bar.
+zmin=0
+zmax=3
+
+# Set color palette.
+cutpts <- seq(zmin,zmax,by=(zmax-zmin)/10) 
+
+GPMplot <- levelplot(z ~ lon * lat, data=grid, at=cutpts,
+  col.regions=(rev(brewer.pal(10,"RdBu"))), main="Log Precipitation") +
+     xyplot(lat ~ lon, xymap, type='l', lty=1, lwd=1, col='black') 
+
+print(GPMplot)
+
+levelplot(z ~ lon * lat, data=grid, at=cutpts,
+          xlim = c(-90,-85), ylim = c(40,45), 
+  col.regions=(rev(brewer.pal(10,"RdBu"))), main="Log Precipitation") +
+     xyplot(lat ~ lon, xymap, type='l', lty=1, lwd=1, col='black') 
+
+# Save it as PNG.
+setwd("/scratch/gilbreth/YourUserName/GPM")
+pdf("GPM_test.png", width=1280, height=960)
+print(GPMplot)
+dev.off()
+```
